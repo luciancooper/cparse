@@ -36,7 +36,10 @@ def dirtree(paths):
 
 def maketree(paths):
     """Paths are a list of relative paths"""
-    return ["."]+dirtree([split(path) for path in paths])
+    paths = [split(path) for path in paths]
+    if len(paths)==0:
+        return ["."]
+    return ["."]+dirtree(paths)
 
 # ============================================ File Utils ============================================ #
 
