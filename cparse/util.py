@@ -74,3 +74,11 @@ def cli_cyan(message):
 
 def cli_green(message):
     print("\x1b[32m{}\x1b[0m".format(message),file=sys.stderr)
+
+def str_col(items,align='>'):
+    # (> : right) (< : left) (^ : center)
+    s = [str(i) for i in items]
+    mx = max(len(x) for x in s)
+    a = '{:%s%i}'%(align,mx)
+    return [a.format(x) for x in s]
+
