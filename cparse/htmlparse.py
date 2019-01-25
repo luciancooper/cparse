@@ -2,7 +2,8 @@
 import sys,re,os
 import pydecorator
 from .util import read_file,getkey,is_url,split_url,cli_warning
-from .tree import split,maketree
+from .fpath import File
+from .tree import maketree
 from html.parser import HTMLParser
 
 __all__ = ['linktree']
@@ -31,14 +32,14 @@ class linktree():
         self.html = html
         self.scripts = scripts
         self.stylesheets = stylesheets
-    
+
     @staticmethod
     def _localpath(root,file):
         file = os.path.normcase(file)
         if not os.path.isabs(file):
             file = os.path.normpath(os.path.join(root,file))
         return file
-    
+
     @classmethod
     def from_file(cls,path):
         parser = LinkParser(path)
@@ -48,10 +49,6 @@ class linktree():
         scripts = [cls._localpath(root,f) for f in parser.scripts if not is_url(f)]
         stylesheets = [cls._localpath(root,f) for f in parser.stylesheets if not is_url(f)]
         return cls([path],scripts,stylesheets)
-        #path = split(file)
-        #root = path[:-1]
-        #self.local_scripts = [os.path.join(*relative_path(root,split(f))) for f in self.scripts if not is_url(f)]
-        #self.local_stylesheets = [os.path.join(*relative_path(root,split(f))) for f in self.stylesheets if not is_url(f)]
 
     def add_file(self,path):
         parser = LinkParser(path)
@@ -76,7 +73,7 @@ class linktree():
         self.scripts = sortset(self.scripts+other.scripts)
         self.stylesheets = sortset(self.stylesheets+other.stylesheets)
         return self
-    
+
     def files(self,html=True,scripts=True,stylesheets=True):
         files = (self.html if html else [])+(self.scripts if scripts else [])+(self.stylesheets if stylesheets else [])
         if len(files)==0:
@@ -84,21 +81,25 @@ class linktree():
         root = os.path.join(os.path.commonpath(files),"")
         return [f[len(root):] for f in files]
 
-    def tree(self,**kwargs):
-        files = self.files(**kwargs)
-        return '\n'.join(maketree(files))
-    
+    def tree(self,html=True,scripts=True,stylesheets=True,cli=False):
+        files = (self.html if html else [])+(self.scripts if scripts else [])+(self.stylesheets if stylesheets else [])
+        if len(files)==0:
+            return files
+        root = os.path.join(os.path.commonpath(files),"")
+        files = sorted([File(f[len(root):],f) for f in files])
+        return '\n'.join(['.']+maketree(files,fmt=lambda f: f.fmt("%f",cli)))
+
 
 
 class LinkParser(HTMLParser):
-    
+
     def __init__(self,file):
         """Parse all links in input file. File must be an absolute path"""
         super().__init__()
         self.scripts = set()
         self.stylesheets = set()
         self.feed(read_file(file))
-    
+
     # Handle start tag event
     def handle_starttag(self, tag, attrs):
         if tag == "link":
@@ -117,9 +118,3 @@ class LinkParser(HTMLParser):
             if src != None:
                 self.scripts.add(src)
             return
-    
-
-        
-
-
-    

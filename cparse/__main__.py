@@ -1,6 +1,5 @@
 import sys,os,argparse
-from .util import cli_warning,cli_cyan,cli_green,reduce
-
+from .util import cli_warning,cli_color,reduce
 
 def path_arg(path):
     path = os.path.normcase(path)
@@ -10,47 +9,44 @@ def path_arg(path):
         cli_warning("path '{}' does not exist".format(path))
         exit(1)
     return path
-        
+
 
 # ============================================ Tree ============================================ #
 
 def _tree(args):
+    # path, format, (pattern | regexp | filetype)
     path = path_arg(args.path)
-    from .tree import maketree,fileiter,filter_match,filter_ftypes,filter_regexp,fcreated,fmodified
-    files = fileiter(path)
+    from .fpath import File,splitpath
+    from .tree import maketree,fileiter
+    files = sorted([File(f,os.path.join(path,f)) for f in fileiter(path)])
     if args.pattern is not None:
-        files = filter_match(files,args.pattern)
+        files = [f for f in files if f.is_match(args.pattern)]
     elif args.regexp is not None:
-        files = filter_regexp(files,args.regexp)
+        files = [f for f in files if f.is_regexp(args.regexp)]
     elif args.filetype is not None:
-        files = filter_ftypes(files,args.filetype)
-    files,times = list(files),None
-    if args.tcreated:
-        times = [fcreated(os.path.join(path,x)) for x in files]
-    elif args.tmodified:
-        times = [fmodified(os.path.join(path,x)) for x in files]
-    for l in maketree(files,times):
-        print(l,file=sys.stdout)
+        files = [f for f in files if f.is_ftype(args.filetype)]
+    if args.include != None:
+        include = [splitpath(p) for p in args.include]
+        files = [f for f in files if any(f.inpath(x) for x in include)]
+    if args.exclude != None:
+        exclude = [splitpath(p) for p in args.exclude]
+        files = [f for f in files if not any(f.inpath(x) for x in exclude)]
+    isatty = sys.stdout.isatty()
+    ftree = maketree(files,fmt=(lambda f: f.fmt(args.format,cli=isatty)))
+    print('\n'.join(['.']+ftree),file=sys.stdout)
+
 
 # ============================================ ls ============================================ #
 
 def _ls(args):
+    # path, recursive, format
     path = path_arg(args.path)
-    from .tree import ls,fmodified,fcreated
-    from .util import str_col,timestamp
-    flist = ls(path,args.recursive)
-    output = flist
-    if args.fcreated or args.fmodified:
-        output = [""]+output
-    if args.fmodified:
-        modified = ["Modified"]+[timestamp(fmodified(os.path.join(path,f))) for f in flist]
-        output = ["{}  {}".format(*x) for x in zip(str_col(modified,"<"),output)]
-    if args.fcreated:
-        created = ["Created"]+[timestamp(fcreated(os.path.join(path,f))) for f in flist]
-        output = ["{}  {}".format(*x) for x in zip(str_col(created,"<"),output)]
-    for l in output:
-        print(l,file=sys.stdout)
-
+    from .fpath import File
+    from .tree import ls
+    flist = sorted([File(f,os.path.join(path,f)) for f in ls(path,args.recursive)])
+    isatty = sys.stdout.isatty()
+    for f in flist:
+        print(f.fmt(args.format,cli=isatty),file=sys.stdout)
 
 # ============================================ Py ============================================ #
 
@@ -72,13 +68,13 @@ def _py(args):
         return
     for l in parse_pyfile(path):
         print(l,file=sys.stdout)
-    
+
 
 # ============================================ html ============================================ #
 
 def _html(args):
     path = path_arg(args.path)
-    cli_cyan(f"HTML Input Path: {path}")
+    cli_color(f"HTML Input Path: {path}",36)
     from .tree import fileiter,filter_ftypes
     from .htmlparse import linktree
     if os.path.isdir(path):
@@ -88,13 +84,13 @@ def _html(args):
         if len(files) == 0:
             return
         links = reduce(lambda x,y: x+y, [linktree.from_file(f) for f in files])
-        print(links.tree(),file=sys.stdout)
+        print(links.tree(cli=sys.stdout.isatty()),file=sys.stdout)
         return
     if not path.endswith('.html'):
         cli_warning("'{}' is not an html file".format(path))
         return
     links = linktree.from_file(path)
-    print(links.tree(),file=sys.stdout)
+    print(links.tree(cli=sys.stdout.isatty()),file=sys.stdout)
 
 
 
@@ -108,13 +104,13 @@ def main():
 
     parser_tree = subparsers.add_parser('tree', help='print file tree',description="File tree command")
     parser_tree.add_argument('path',nargs='?',default=os.getcwd(),help='tree root directory')
+    parser_tree.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
     parser_tree_filter = parser_tree.add_mutually_exclusive_group(required=False)
     parser_tree_filter.add_argument('-p',dest='pattern',metavar='pattern',help='wild card pattern')
     parser_tree_filter.add_argument('-r',dest='regexp',metavar='regexp',help='regexp match pattern')
-    parser_tree_filter.add_argument('-ft',dest='filetype',action='append',metavar='filetype',help='file type filter')
-    parser_tree_times = parser_tree.add_mutually_exclusive_group(required=False)
-    parser_tree_times.add_argument('-m',dest='tmodified',action='store_true',help='display time last modified')
-    parser_tree_times.add_argument('-c',dest='tcreated',action='store_true',help='display time created')
+    parser_tree_filter.add_argument('-t',dest='filetype',action='append',metavar='filetype',help='file type filter')
+    parser_tree.add_argument('-exc','--exclude',dest='exclude',action='append',metavar='path',help='paths to exclude from tree')
+    parser_tree.add_argument('-inc','--include',dest='include',action='append',metavar='path',help='paths to include in tree')
     parser_tree.set_defaults(run=_tree)
 
     # ------------------------------------------------ ls ------------------------------------------------ #
@@ -122,8 +118,7 @@ def main():
     parser_ls = subparsers.add_parser('ls', help='list files in directory',description="List files command")
     parser_ls.add_argument('path',nargs='?',default=os.getcwd(),help='root directory')
     parser_ls.add_argument('-r',dest='recursive',action='store_true',help='search recursively')
-    parser_ls.add_argument('-c',dest='fcreated',action='store_true',help='list time created')
-    parser_ls.add_argument('-m',dest='fmodified',action='store_true',help='list time last modified')
+    parser_ls.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
     parser_ls.set_defaults(run=_ls)
 
     # ------------------------------------------------ py ------------------------------------------------ #
