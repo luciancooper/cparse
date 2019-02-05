@@ -93,6 +93,22 @@ def _html(args):
     print(links.tree(cli=sys.stdout.isatty()),file=sys.stdout)
 
 
+# ============================================ css ============================================ #
+
+def _css(args):
+    path = path_arg(args.path)
+    if not path.endswith('.css'):
+        cli_warning("'{}' is not an css file".format(path))
+        return
+    cli_color(f"CSS Input Path: {path}",36)
+    from .css import CSSFile
+    file = CSSFile.read_file(path)
+    if args.group:
+        file = file.group_selectors()
+    print(repr(file),file=sys.stdout)
+
+
+
 
 # ============================================ Main ============================================ #
 
@@ -137,6 +153,15 @@ def main():
     #parser_html.add_argument('-a',dest='ask',action='store_true',help='ask to include files')
     #parser_html.add_argument('-r',dest='recursive',action='store_true',help='search root path recursively')
     parser_html.set_defaults(run=_html)
+
+    # ------------------------------------------------ css ------------------------------------------------ #
+
+    parser_css = subparsers.add_parser('css', help='css file parser',description="css code parser")
+    parser_css.add_argument('path',help='a css file to parse')
+    parser_css.add_argument('-g',dest='group',action='store_true',help='group identical selector property blocks')
+    parser_css.add_argument('-c',dest='condense',action='store_true',help='condense redundancies within property blocks')
+    parser_css.set_defaults(run=_css)
+
 
     # ------------------------------------------------------------------------------------------------ #
     args = parser.parse_args()
