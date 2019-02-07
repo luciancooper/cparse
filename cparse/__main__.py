@@ -16,9 +16,12 @@ def path_arg(path):
 def _tree(args):
     # path, format, (pattern | regexp | filetype)
     path = path_arg(args.path)
+    print(cli_color(path,36),file=sys.stderr)
     from .fpath import File,splitpath
     from .tree import maketree,fileiter
     files = sorted([File(f,os.path.join(path,f)) for f in fileiter(path)])
+    if args.hidden == False:
+        files = [f for f in files if not f.hidden]
     if args.pattern is not None:
         files = [f for f in files if f.is_match(args.pattern)]
     elif args.regexp is not None:
@@ -41,9 +44,12 @@ def _tree(args):
 def _ls(args):
     # path, recursive, format
     path = path_arg(args.path)
+    print(cli_color(path,36),file=sys.stderr)
     from .fpath import File
     from .tree import ls
     flist = sorted([File(f,os.path.join(path,f)) for f in ls(path,args.recursive)])
+    if args.hidden == False:
+        flist = [f for f in flist if not f.hidden]
     isatty = sys.stdout.isatty()
     for f in flist:
         print(f.fmt(args.format,cli=isatty),file=sys.stdout)
@@ -74,7 +80,7 @@ def _py(args):
 
 def _html(args):
     path = path_arg(args.path)
-    cli_color(f"HTML Input Path: {path}",36)
+    print(cli_color("HTML Input Path: {}".format(path),36),file=sys.stderr)
     from .tree import fileiter,filter_ftypes
     from .htmlparse import linktree
     if os.path.isdir(path):
@@ -100,11 +106,13 @@ def _css(args):
     if not path.endswith('.css'):
         cli_warning("'{}' is not an css file".format(path))
         return
-    cli_color(f"CSS Input Path: {path}",36)
+    print(cli_color("CSS Input Path: {}".format(path),36),file=sys.stderr)
     from .css import CSSFile
-    file = CSSFile.read_file(path)
+    file = CSSFile.from_file(path)
     if args.group:
-        file = file.group_selectors()
+        file.group_selectors(inplace=True)
+    if args.condense:
+        file.condense(inplace=True)
     print(repr(file),file=sys.stdout)
 
 
@@ -120,6 +128,7 @@ def main():
 
     parser_tree = subparsers.add_parser('tree', help='print file tree',description="File tree command")
     parser_tree.add_argument('path',nargs='?',default=os.getcwd(),help='tree root directory')
+    parser_tree.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
     parser_tree.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
     parser_tree_filter = parser_tree.add_mutually_exclusive_group(required=False)
     parser_tree_filter.add_argument('-p',dest='pattern',metavar='pattern',help='wild card pattern')
@@ -134,6 +143,7 @@ def main():
     parser_ls = subparsers.add_parser('ls', help='list files in directory',description="List files command")
     parser_ls.add_argument('path',nargs='?',default=os.getcwd(),help='root directory')
     parser_ls.add_argument('-r',dest='recursive',action='store_true',help='search recursively')
+    parser_ls.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
     parser_ls.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
     parser_ls.set_defaults(run=_ls)
 

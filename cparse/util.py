@@ -19,6 +19,14 @@ def extract(index,collection):
     for x in index:
         yield collection[x]
 
+def is_iterable(a):
+    if type(a)==str:
+        return False
+    try:
+        iter(a)
+        return True
+    except TypeError:
+        return False
 
 # ============================================ Reduce ============================================ #
 

@@ -84,6 +84,9 @@ class File():
     def modified(self): return fmodified(self.abspath)
 
     @property
+    def hidden(self): return any(x.startswith('.') for x in self.path)
+    
+    @property
     def filetype(self):
         """returns file extension"""
         try:
