@@ -3,7 +3,7 @@ class InvalidCSSError(Exception):
         super().__init__("Invalid CSS Error: {}".format(message))
 
 
-import re,os
+import re,os,sys
 import pydecorator
 from ..util import read_file,iter_reduce,reduce,getkey
 from .property import *
@@ -186,6 +186,7 @@ class CSSContainer():
         for r in self.rules:
             yield r
 
+    
 
 
 class CSSMediaGroup(CSSContainer):
@@ -223,9 +224,9 @@ class CSSMediaGroup(CSSContainer):
     def group_selectors(self,inplace=False):
         index = self.grouprules_specificity(range(len(self.rules)),self.rules)
         groups = [a for b in [self.grouprules_selector(x,self.rules) for x in index] for a in b]
-        rules = [MergedRule.mergerules([self.rules[i] for i in x]) for x in groups]
+        rules = sorted([MergedRule.mergerules([self.rules[i] for i in x]) for x in groups],key=lambda x: x.attr)
         if inplace == False:
-            return CSSMediaGroup(self.selector,sorted(rules,key=lambda x: x.attr),self.attr)
+            return CSSMediaGroup(self.selector,rules,self.attr)
         self.rules = rules
 
     def condense(self,inplace=False):
@@ -287,9 +288,9 @@ class CSSFile(CSSContainer):
     def group_selectors(self,inplace=False):
         index = self.grouprules_specificity(range(len(self.rules)),self.rules)
         groups = [a for b in [self.grouprules_selector(x,self.rules) for x in index] for a in b]
-        rules = [MergedRule.mergerules([self.rules[i] for i in x]) for x in groups]
+        rules = sorted([MergedRule.mergerules([self.rules[i] for i in x]) for x in groups],key=lambda x: x.attr)
         if inplace==False:
-            return CSSFile(sorted(rules,key=lambda x: x.attr),self.attr)
+            return CSSFile(rules,self.attr)
         self.rules = rules
 
     def condense(self,inplace=False):
@@ -298,6 +299,34 @@ class CSSFile(CSSContainer):
             return CSSFile([r.condense() for r in self.rules],self.attr)
         for r in self.rules:
             r.condense(inplace=True)
+
+    def stacked_map(self):
+        pblocks = [x.block.sorted() for x in self.rules]
+        imap = []
+        indexes = [*range(len(self.rules))]
+        while len(indexes)>0:
+            i,indexes = indexes[0],indexes[1:]
+            match = [int(pblocks[i] == pblocks[x]) for x in indexes]
+            imap.append([i]+[x for x,m in zip(indexes,match) if m == 1])
+            indexes = [x for x,m in zip(indexes,match) if m == 0]
+        return imap
+
+    def print(self,file=sys.stdout,linespace=0,stacked=False):
+        # TODO - Add color support when file.isatty()
+        if stacked == False:
+            for r in self.rules:
+                print(linespace*'\n',end='',file=file)
+                print(repr(r),file=file)
+            return
+        for inxs in self.stacked_map():
+            print(linespace*'\n',end='',file=file)
+            selectors = ",\n".join(str(self.rules[i].selector) for i in inxs)
+            block = self.rules[inxs[0]].block.indented()
+            print("{} {{\n{}\n}}".format(selectors,block),file=file)
+        
+
+
+        
 
     def __str__(self):
         if hasattr(self.attr,'name'):

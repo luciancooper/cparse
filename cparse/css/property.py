@@ -140,6 +140,10 @@ class PropertyBlock():
         self.properties = properties
 
 
+    def sorted(self):
+        return PropertyBlock(sorted(self.properties))
+
+    
     # ============== Concatenation ============== #
 
     
@@ -178,4 +182,5 @@ class PropertyBlock():
             return self
         raise ValueError("Cannot concatenate property block with object of type {}".format(type(other).__name__))
     
+
 

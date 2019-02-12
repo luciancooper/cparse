@@ -113,10 +113,7 @@ def _css(args):
         file.group_selectors(inplace=True)
     if args.condense:
         file.condense(inplace=True)
-    print(repr(file),file=sys.stdout)
-
-
-
+    file.print(file=sys.stdout,linespace=1,stacked=args.stacked)
 
 # ============================================ Main ============================================ #
 
@@ -170,6 +167,7 @@ def main():
     parser_css.add_argument('path',help='a css file to parse')
     parser_css.add_argument('-g',dest='group',action='store_true',help='group identical selector property blocks')
     parser_css.add_argument('-c',dest='condense',action='store_true',help='condense redundancies within property blocks')
+    parser_css.add_argument('-s',dest='stacked',action='store_true',help='stack matching selectors in output')
     parser_css.set_defaults(run=_css)
 
 

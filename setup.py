@@ -7,6 +7,7 @@ setup(
     name='cparse',
     version='0.0.1',
     author='Lucian Cooper',
+    author_email='cooperlucian@gmail.com',
     url='https://github.com/luciancooper/cparse',
     project_urls={
         "Documentation": "https://cparse.readthedocs.io",
