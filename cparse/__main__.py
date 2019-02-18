@@ -14,54 +14,96 @@ def path_arg(path):
 # ============================================ Tree ============================================ #
 
 def _tree(args):
-    # path, format, (pattern | regexp | filetype)
+    # path , hidden , maxdepth , format , (pattern | regexp | filetype) , exclude, include
     path = path_arg(args.path)
     print(cli_color(path,36),file=sys.stderr)
     from .fpath import File,splitpath
-    from .tree import maketree,fileiter
-    files = sorted([File(f,os.path.join(path,f)) for f in fileiter(path)])
+    from .tree import maketree,ls_files
+    # maxdepth
+    files = [File(f,os.path.join(path,f)) for f in ls_files(path,True,args.maxdepth)]
+    # hidden
     if args.hidden == False:
-        files = [f for f in files if not f.hidden]
+        files = [x for x in files if not x.hidden]
+    # (pattern | regexp | filetype)
     if args.pattern is not None:
-        files = [f for f in files if f.is_match(args.pattern)]
+        files = [x for x in files if x.is_match(args.pattern)]
     elif args.regexp is not None:
-        files = [f for f in files if f.is_regexp(args.regexp)]
+        files = [x for x in files if x.is_regexp(args.regexp)]
     elif args.filetype is not None:
-        files = [f for f in files if f.is_ftype(args.filetype)]
+        files = [x for x in files if x.is_ftype(args.filetype)]
+
+    # exclude, include
     if args.include != None:
         include = [splitpath(p) for p in args.include]
-        files = [f for f in files if any(f.inpath(x) for x in include)]
+        files = [x for x in files if any(x.inpath(p) for p in include)]
     if args.exclude != None:
         exclude = [splitpath(p) for p in args.exclude]
-        files = [f for f in files if not any(f.inpath(x) for x in exclude)]
-    isatty = sys.stdout.isatty()
-    ftree = maketree(files,fmt=(lambda f: f.fmt(args.format,cli=isatty)))
+        files = [x for x in files if not any(x.inpath(p) for p in exclude)]
+
+    # ---- Make Tree ---- #
+    ftree = maketree(sorted(files),fmt=args.format,cli=sys.stdout.isatty())
     print('\n'.join(['.']+ftree),file=sys.stdout)
 
 
 # ============================================ ls ============================================ #
 
 def _ls(args):
-    # path, recursive, format
+    # path , hidden , recursive, maxdepth , limit , format , (pattern | regexp | filetype) , type [f,d] , exclude, include, sort [m,M,c,C]
     path = path_arg(args.path)
     print(cli_color(path,36),file=sys.stderr)
-    from .fpath import File
-    from .tree import ls
-    flist = sorted([File(f,os.path.join(path,f)) for f in ls(path,args.recursive)])
+    from .fpath import File,splitpath
+    from .tree import ls,ls_files,ls_dirs
+    #  (files | dirs)
+    lsfn = ls
+    if args.type == 'f':
+        lsfn = ls_files
+    elif args.type == 'd':
+        lsfn = ls_dirs
+    # recursive, maxdepth
+    flist = [File(x,os.path.join(path,x)) for x in lsfn(path,args.recursive,args.maxdepth)]
+    # hidden
     if args.hidden == False:
-        flist = [f for f in flist if not f.hidden]
+        flist = [x for x in flist if not x.hidden]
+    # (pattern | regexp | filetype)
+    if args.pattern is not None:
+        flist = [x for x in flist if x.is_match(args.pattern)]
+    elif args.regexp is not None:
+        flist = [x for x in flist if x.is_regexp(args.regexp)]
+    elif args.filetype is not None:
+        flist = [x for x in flist if x.is_ftype(args.filetype)]
+
+    # exclude, include
+    if args.include != None:
+        include = [splitpath(p) for p in args.include]
+        flist = [x for x in flist if any(x.inpath(p) for p in include)]
+    if args.exclude != None:
+        exclude = [splitpath(p) for p in args.exclude]
+        flist = [x for x in flist if not any(x.inpath(p) for p in exclude)]
+
+    # sort
+    if args.sort is not None:
+        if args.sort.lower() == 'm':
+            flist = sorted(flist,key=lambda x: x.modified,reverse=(args.sort=='m'))
+        elif args.sort.lower() == 'c':
+            flist = sorted(flist,key=lambda x: x.created,reverse=(args.sort=='c'))
+    else:
+        flist = sorted(flist)
+    # limit
+    limit = min(args.limit,len(flist)) if args.limit is not None else len(flist)
+    # ---- Print Out ---- #
     isatty = sys.stdout.isatty()
-    for f in flist:
-        print(f.fmt(args.format,cli=isatty),file=sys.stdout)
+    for x in flist[:limit]:
+        print(x.fmt(args.format,cli=isatty),file=sys.stdout)
 
 # ============================================ Py ============================================ #
 
 def _py(args):
     path = path_arg(args.path)
-    from .tree import fileiter,filter_ftypes
+    from .fpath import ftype
+    from .tree import ls_files
     from .pyparse import parse_pyfile
     if os.path.isdir(path):
-        files = [os.path.join(path,f) for f in filter_ftypes(fileiter(path),['py'])]
+        files = [os.path.join(path,x) for x in ls_files(path) if ftype(x)=='py']
         print("{} python files found".format(len(files)),file=sys.stderr)
         for f in files:
             print("parsing '{}'".format(f),file=sys.stderr)
@@ -81,11 +123,12 @@ def _py(args):
 def _html(args):
     path = path_arg(args.path)
     print(cli_color("HTML Input Path: {}".format(path),36),file=sys.stderr)
-    from .tree import fileiter,filter_ftypes
+    from .fpath import ftype
+    from .tree import ls_files
     from .htmlparse import linktree
     if os.path.isdir(path):
         # search through target directory
-        files = [os.path.join(path,f) for f in filter_ftypes(fileiter(path),['html'])]
+        files = [os.path.join(path,x) for x in ls_files(path) if ftype(x)=='html']
         print("{} html files found".format(len(files)),file=sys.stderr)
         if len(files) == 0:
             return
@@ -122,26 +165,40 @@ def main():
     subparsers = parser.add_subparsers(title="Available sub commands",metavar='command')
 
     # ------------------------------------------------ tree ------------------------------------------------ #
-
+    # path , hidden , maxdepth , format , (pattern | regexp | filetype) , exclude, include
     parser_tree = subparsers.add_parser('tree', help='print file tree',description="File tree command")
     parser_tree.add_argument('path',nargs='?',default=os.getcwd(),help='tree root directory')
     parser_tree.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
-    parser_tree.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
+    parser_tree.add_argument('-n',dest='maxdepth',type=int,metavar='DEPTH',help='max tree depth');
+    parser_tree.add_argument('-fmt',dest='format',type=str,default="%n",metavar='FORMAT',help='display format for tree nodes')
     parser_tree_filter = parser_tree.add_mutually_exclusive_group(required=False)
-    parser_tree_filter.add_argument('-p',dest='pattern',metavar='pattern',help='wild card pattern')
-    parser_tree_filter.add_argument('-r',dest='regexp',metavar='regexp',help='regexp match pattern')
-    parser_tree_filter.add_argument('-t',dest='filetype',action='append',metavar='filetype',help='file type filter')
-    parser_tree.add_argument('-exc','--exclude',dest='exclude',action='append',metavar='path',help='paths to exclude from tree')
-    parser_tree.add_argument('-inc','--include',dest='include',action='append',metavar='path',help='paths to include in tree')
+    parser_tree_filter.add_argument('-wc',dest='pattern',metavar='PATTERN',help='wild card pattern')
+    parser_tree_filter.add_argument('-grep',dest='regexp',metavar='REGEXP',help='regular expression to match')
+    parser_tree_filter.add_argument('-ft',dest='filetype',action='append',metavar='FILETYPE',help='file type filter')
+    parser_tree.add_argument('-exc',dest='exclude',action='append',metavar='PATH',help='paths to exclude from tree')
+    parser_tree.add_argument('-inc',dest='include',action='append',metavar='PATH',help='paths to include in tree')
     parser_tree.set_defaults(run=_tree)
 
     # ------------------------------------------------ ls ------------------------------------------------ #
-
+    # path , hidden , recursive, maxdepth , limit , format , (pattern | regexp | filetype) , type [f,d] , exclude, include, sort [m,M,c,C]
     parser_ls = subparsers.add_parser('ls', help='list files in directory',description="List files command")
     parser_ls.add_argument('path',nargs='?',default=os.getcwd(),help='root directory')
-    parser_ls.add_argument('-r',dest='recursive',action='store_true',help='search recursively')
+    parser_ls.add_argument('-r',dest='recursive',action='store_true',help='list files recursively')
+    parser_ls.add_argument('-n',dest='maxdepth',type=int,metavar='DEPTH',help='max depth if recursive flag is specified')
     parser_ls.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
-    parser_ls.add_argument('-f','--format',dest='format',type=str,default="%f",help='display format for files')
+    parser_ls.add_argument('-lim',dest='limit',type=int,metavar='COUNT',help='maximum items to list in output')
+    parser_ls.add_argument('-fmt',dest='format',type=str,default="%f",metavar='FORMAT',help='display format for listed items')
+    parser_ls_filter = parser_ls.add_mutually_exclusive_group(required=False)
+    parser_ls_filter.add_argument('-wc',dest='pattern',metavar='PATTERN',help='wild card pattern')
+    parser_ls_filter.add_argument('-grep',dest='regexp',metavar='REGEXP',help='regular expression to match')
+    parser_ls_filter.add_argument('-ft',dest='filetype',action='append',metavar='FILETYPE',help='file type filter')
+    parser_ls.add_argument('-type',dest='type',type=str,metavar='ARG',choices=['f','d'],help='specify to include either files or directories only')
+    #parser_ls_type = parser_tree.add_mutually_exclusive_group(required=False)
+    #parser_ls_type.add_argument('-files',dest='files',action='store_true', help='include files only')
+    #parser_ls_type.add_argument('-d',dest='dirs',action='store_true', help='include directories only')
+    parser_ls.add_argument('-sort',dest='sort',type=str,metavar='ARG',choices=['m','M','c','C'],help='sort output list by created or modified timestamp')
+    parser_ls.add_argument('-exc',dest='exclude',action='append',metavar='PATH',help='paths to exclude if recursive flag is specified')
+    parser_ls.add_argument('-inc',dest='include',action='append',metavar='PATH',help='paths to include if recursive flag is specified')
     parser_ls.set_defaults(run=_ls)
 
     # ------------------------------------------------ py ------------------------------------------------ #

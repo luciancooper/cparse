@@ -87,7 +87,7 @@ class linktree():
             return files
         root = os.path.join(os.path.commonpath(files),"")
         files = sorted([File(f[len(root):],f) for f in files])
-        return '\n'.join(['.']+maketree(files,fmt=lambda f: f.fmt("%f",cli)))
+        return '\n'.join(['.']+maketree(files,fmt='%n',cli=cli))
 
 
 

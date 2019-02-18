@@ -60,16 +60,23 @@ class File():
         self.path = splitpath(path)
         # Determine Absolute Path
         if abspath != None:
-            self.abspath = os.path.normcase(abspath)
+            abspath = os.path.normcase(abspath)
         elif os.path.isabs(path):
-            self.abspath = path
+            abspath = path
         else:
-            self.abspath = os.path.normpath(os.path.join(os.getcwd(),path))
+            abspath = os.path.normpath(os.path.join(os.getcwd(),path))
+        self._abspath = splitpath(abspath)
+        stats = os.stat(abspath)
+        self.created = stats.st_birthtime
+        self.modified = stats.st_mtime
+        self.dir = os.path.isdir(abspath)
 
-    # Properties
+
     def __str__(self): return os.path.join(*self.path)
 
     def __len__(self): return len(self.path)
+
+    # --------- Path --------- #
 
     @property
     def filename(self): return self.path[-1]
@@ -78,17 +85,24 @@ class File():
     def filepath(self): return os.path.join(*self.path)
 
     @property
-    def created(self): return fcreated(self.abspath)
+    def abspath(self): return os.path.join(*self._abspath)
 
     @property
-    def modified(self): return fmodified(self.abspath)
+    def rootpath(self):
+        if len(self.path) == len(self._abspath):
+            return "/"
+        return os.path.join(*self._abspath[:-len(self.path)],'')
+
+    # --------- file properties --------- #
 
     @property
     def hidden(self): return any(x.startswith('.') for x in self.path)
-    
+
     @property
     def filetype(self):
         """returns file extension"""
+        if self.dir:
+            return None
         try:
             file = self.path[-1]
             i = file.rindex('.')
@@ -96,19 +110,22 @@ class File():
         except ValueError:
             return ''
 
+    # --------- Format --------- #
+
     def _format_code(self,code,cli):
         # Date Modified
         if code == 'm':
             return cli_color(timestamp(self.modified),33) if cli else timestamp(self.modified)
         if code == 'c':
             return cli_color(timestamp(self.created),32) if cli else timestamp(self.created)
-        if code == 'f':
+        if code == 'n':
             return self.filename
-        if code == 'F':
+        if code == 'f':
             return self.filepath
+        if code == 'F':
+            return self.abspath
         raise IndexError("Unrecognized Format Variable '{}'".format(code))
 
-    # Pattern
     @pydecorator.str
     def fmt(self,pattern,cli=False):
         """Returns a formatted version of file"""
@@ -128,10 +145,10 @@ class File():
                 yield pattern[i:j]
 
 
-    # Checks
+    # --------- Checks --------- #
 
     def inpath(self,path):
-        if len(self.path)-1 < len(path):
+        if (len(self.path)-(0 if self.dir else 1)) < len(path):
             return False
         for p1,p2 in zip(self.path,path):
             if p1 != p2:
@@ -144,13 +161,15 @@ class File():
 
     def is_ftype(self,ftypes):
         """Check if filetype is one of supplied [ftypes]"""
+        if self.dir:
+            return False
         return self.filetype in ftypes
 
     def is_regexp(self,regexp):
         """Check if filepath matches [regexp]"""
         return bool(re.match(regexp,self.filepath))
 
-    # Comparisons
+    #  --------- Comparisons --------- #
 
     def cmp(self,other):
         if not isinstance(other,File): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))

@@ -5,12 +5,10 @@ tree
 
 The ``tree`` command prints file trees
 
-
 Usage
 -----------------------------------------
 
-``cparse tree [-h] [-a] [-f FORMAT] [-p pattern | -r regexp | -t filetype] [-exc path] [-inc path] [path]``
-
+``cparse tree [-h] [-a] [-n DEPTH] [-fmt FORMAT] [-wc PATTERN | -grep REGEXP | -ft FILETYPE] [-exc PATH] [-inc PATH] [path]``
 
 Positional Arguments
 """""""""""""""""""""""""
@@ -22,18 +20,20 @@ Positional Arguments
 Optional Arguments
 """""""""""""""""""""""""
 
-+-------------------------------+----------------------------+
-| ``-a``                        | include hidden files       |
-+-------------------------------+----------------------------+
-| ``-f format``                 | display format for files   |
-+-------------------------------+----------------------------+
-| ``-p pattern``                | wild card pattern          |
-+-------------------------------+----------------------------+
-| ``-r regexp``                 | regexp match pattern       |
-+-------------------------------+----------------------------+
-| ``-t filetype``               | file type filter           |
-+-------------------------------+----------------------------+
-| ``-exc path, --exclude path`` | paths to exclude from tree |
-+-------------------------------+----------------------------+
-| ``-inc path, --include path`` | paths to include in tree   |
-+-------------------------------+----------------------------+
++------------------+-------------------------------+
+| ``-a``           | include hidden files          |
++------------------+-------------------------------+
+| ``-n DEPTH``     | max tree depth                |
++------------------+-------------------------------+
+| ``-fmt FORMAT``  | display format for tree nodes |
++------------------+-------------------------------+
+| ``-wc PATTERN``  | wild card pattern             |
++------------------+-------------------------------+
+| ``-grep REGEXP`` | regular expression to match   |
++------------------+-------------------------------+
+| ``-ft FILETYPE`` | file type filter              |
++------------------+-------------------------------+
+| ``-exc PATH``    | paths to exclude from tree    |
++------------------+-------------------------------+
+| ``-inc PATH``    | paths to include in tree      |
++------------------+-------------------------------+
