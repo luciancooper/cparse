@@ -1,6 +1,5 @@
 import os,re,fnmatch,functools
 from .util import iter_reduce
-from .fpath import splitpath,fmodified,fcreated,ftype
 
 __all__ = ['maketree','ls','ls_files','ls_dirs']
 

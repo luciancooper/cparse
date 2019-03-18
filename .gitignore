@@ -14,6 +14,9 @@ Scratch*.ipynb
 # Hide visual studio code hidden files
 .vscode
 
+# Hide PyCharm hidden files
+.idea
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
