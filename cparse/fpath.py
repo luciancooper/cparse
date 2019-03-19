@@ -30,7 +30,7 @@ def joinpath(*args):
     if len(args)==1:
         return os.sep if args[0]=='' else args[0]
     raise "joinpath requires 1 or more arguments"
-            
+
 
 
 def cmp_paths(p1,p2):
@@ -46,7 +46,6 @@ def cmp_paths(p1,p2):
     return 1 if f1 > f2 else -1 if f1 < f2 else 0
 
 
-sort_paths = pydecorator.mergesort(duplicate_values=True)(cmp_paths)
 
 # ============================================ File ============================================ #
 
@@ -118,6 +117,18 @@ class Path(metaclass=PathMeta):
     def name(self): return self._path[-1]
 
     @property
+    def isfile(self):
+        return '.' in self.name
+
+    @property
+    def isdir(self):
+        return '.' not in self.name
+
+    @property
+    def _dir(self):
+        return self._path[:-1] if self.isfile else self._path
+
+    @property
     def path(self): return joinpath(*self._path)
 
     @property
@@ -139,13 +150,10 @@ class Path(metaclass=PathMeta):
 
     def _format_code(self,code,cli):
         # Date Modified
-        if code == 'm':
-            return '(n/a)' if not hasattr(self,'modified') else cli_color(timestamp(self.modified),33) if cli else timestamp(self.modified)
-        if code == 'c':
-            return '(n/a)' if not hasattr(self,'created') else cli_color(timestamp(self.created),32) if cli else timestamp(self.created)
         if code == 'n': return self.name
         if code == 'f': return self.path
         if code == 'F': return self.abspath
+        if code == 'm' or code == 'c' or code == 'b': return ''
         raise IndexError("Unrecognized Format Variable '{}'".format(code))
 
     @pydecorator.str
@@ -169,7 +177,7 @@ class Path(metaclass=PathMeta):
     # --------- Checks --------- #
 
     def inpath(self,path):
-        if (len(self._path)-1) < len(path):
+        if (len(self._path)-(1 if self.isfile else 0)) < len(path):
             return False
         for p1,p2 in zip(self._path,path):
             if p1 != p2:
@@ -242,33 +250,76 @@ class Dir(Path):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
 
-    # --------- Checks --------- #
+    # --------- properties --------- #
 
-    def inpath(self,path):
-        if len(self._path) < len(path):
-            return False
-        for p1,p2 in zip(self._path,path):
-            if p1 != p2:
-                return False
-        return True
+    @property
+    def isfile(self): return False
 
+    @property
+    def isdir(self): return True
 
+    @property
+    def _dir(self):
+        return self._path
+    
     # --------- ls --------- #
 
-    def ls(self,depth=None,hidden=False):
-        """finds all files and dirs in path"""
+    @staticmethod
+    def _prune_dirs(dirs,excprune,incprune):
+        # ---- EFFICIENT PRUNING ---- #
+        if excprune is not None:
+            # get newest round of nodes & use them to filter out dirs that are to be completely excluded
+            e_n = [e[0] for e in excprune if len(e) == 1]
+            dirs = [d for d in dirs if d.name not in e_n]
+            # keep subtree arguments
+            e_t = [e for e in excprune if len(e) > 1]
+            e_p = [x if len(x)>0 else None for x in [[e[1:] for e in e_t if d.name==e[0]] for d in dirs]]
+        else:
+            e_p = [None]*len(dirs)
+        if incprune is None:
+            for d,e in zip(dirs,e_p):
+                yield (d,e,None)
+            return
+        for d,e in zip(dirs,e_p):
+            i_p = [i for i in incprune if i[0] == d.name]
+            if len(i_p)==0:
+                continue
+            i_p = [i[1:] for i in i_p if len(i)>1]
+            yield (d,e,i_p if len(i_p)>0 else None)
+
+    def ls(self,depth=None,hidden=False,excprune=None,incprune=None):
+        """
+        finds all files and dirs in path
+        args:
+            * depth
+            * hidden
+            * excprune: exclude prune
+            * incprune: include prune
+        """
         path,abspath = self.path,self.abspath
         p = [Path(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath)]
         if not hidden: p = [x for x in p if not x.hidden]
         f = sorted([x for x in p if isinstance(x,File)],key=lambda x:x.name)
-        d = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
+        dirs = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
         if depth is not None:
-            if depth == 0:return f+d
+            if depth == 0:
+                return f + (dirs if (excprune is None and incprune is None) else [d for d,e,i in self._prune_dirs(dirs,excprune,incprune)])
             depth = depth-1
-        return f+[a for b in [[x]+x.ls(depth,hidden) for x in d] for a in b]
+        if excprune is None and incprune is None:
+            return f+[a for b in [[d]+d.ls(depth,hidden) for d in dirs] for a in b]
+        for d,e,i in self._prune_dirs(dirs,excprune,incprune):
+            f.extend([d]+d.ls(depth,hidden,excprune=e,incprune=i))
+        return f
 
-    def ls_files(self,depth=None,hidden=False):
-        """finds all files in path"""
+    def ls_files(self,depth=None,hidden=False,excprune=None,incprune=None):
+        """
+        finds all files in path
+        args:
+            * depth
+            * hidden
+            * excprune: exclude prune
+            * incprune: include prune
+        """
         path,abspath = self.path,self.abspath
         if depth == 0:
             f = [File(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath) if x.is_file()]
@@ -280,11 +331,33 @@ class Dir(Path):
         f = sorted([x for x in p if isinstance(x,File)],key=lambda x:x.name)
         if depth is not None:
             depth = depth-1
-        d = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
-        return f+[a for b in [x.ls_files(depth,hidden) for x in d] for a in b]
+        dirs = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
+        if excprune is None and incprune is None:
+            return f+[a for b in [x.ls_files(depth,hidden) for x in dirs] for a in b]
+        # ---- EFFICIENT PRUNING ---- #
+        if excprune is not None:
+            # get newest round of nodes & use them to filter out dirs that are to be completely excluded
+            excnodes = [e[0] for e in excprune if len(e) == 1]
+            dirs = [d for d in dirs if d.name not in excnodes]
+            # keep subtree arguments
+            exctrees = [e for e in excprune if len(e) > 1]
+            e_p = [x if len(x)>0 else None for x in [[e[1:] for e in exctrees if d.name==e[0]] for d in dirs]]
+        else:
+            e_p = [None]*len(dirs)
+        if incprune is None:
+            return f+[a for b in [d.ls_files(depth,hidden,excprune=e) for d,e in zip(dirs,e_p)] for a in b]
+        for d,e in zip(dirs,e_p):
+            i_p = [i for i in incprune if i[0] == d.name]
+            if len(i_p)==0:
+                continue
+            i_p = [i[1:] for i in i_p if len(i)>1]
+            f.extend(d.ls_files(depth,hidden,excprune=e,incprune=(i_p if len(i_p)>0 else None)))
+        return f
 
     def ls_dirs(self,depth=None,hidden=False):
-        """finds all dirs in path"""
+        """
+        finds all dirs in path
+        """
         path,abspath = self.path,self.abspath
         p = sorted([Dir(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath) if x.is_dir()],key=lambda x:x.name)
         if not hidden: p = [x for x in p if not x.hidden]
@@ -323,6 +396,18 @@ class File(Path):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
     
+    # --------- path --------- #
+
+    @property
+    def isfile(self): return True
+
+    @property
+    def isdir(self): return False
+    
+    @property
+    def _dir(self):
+        return self._path[:-1]
+    
     # --------- file properties --------- #
 
     @property
@@ -341,6 +426,18 @@ class File(Path):
 
     def is_ftype(self,ftypes):
         """Check if filetype is one of supplied [ftypes]"""
-        if self.dir:
-            return False
         return self.filetype in ftypes
+
+    # --------- Format --------- #
+
+    def _format_code(self,code,cli):
+        # Date Modified
+        if code == 'm':
+            return '-' if not hasattr(self,'modified') else cli_color(timestamp(self.modified),33) if cli else timestamp(self.modified)
+        # Date created
+        if code == 'c':
+            return '-' if not hasattr(self,'created') else cli_color(timestamp(self.created),32) if cli else timestamp(self.created)
+        # File Size
+        if code == 'b':
+            return '-' if not hasattr(self,'size') else cli_color(str(self.size),34) if cli else str(self.size)
+        return super()._format_code(code,cli)
