@@ -5,6 +5,7 @@ from contextlib import closing
 import re
 import sys
 import os
+import inspect
 
 
 def getkey(d,key,default=None):
@@ -49,6 +50,41 @@ def reduce(fn,iterable,init=None):
     for e in it:
         value = fn(value,e)
     return value
+
+# ============================================ Sort ============================================ #
+
+def mergesort(vector,cmp,unique=False):
+
+    def merger(a,b):
+        i,j,x,y = 0,0,len(a),len(b)
+        while i<x and j<y:
+            z = cmp(a[i],b[j])
+            if z<0:
+                yield a[i]
+                i=i+1
+            elif z>0:
+                yield b[j]
+                j=j+1
+            else:
+                yield a[i]
+                if not unique:
+                    yield b[j]
+                i,j=i+1,j+1
+        while i<x:
+            yield a[i]
+            i=i+1
+        while j<y:
+            yield b[j]
+            j=j+1
+
+    def sorter(a):
+        if len(a)<=1:return a
+        m = len(a)//2
+        return [*merger(sorter(a[:m]),sorter(a[m:]))]
+    
+    if inspect.isgenerator(vector):
+        vector = list(vector)
+    return sorter(vector)
 
 # ============================================ time ============================================ #
 

@@ -2,9 +2,9 @@
 
 import os,re,fnmatch
 import pydecorator
-from .util import timestamp,cli_color
+from .util import mergesort,timestamp,cli_color
 
-__all__ = ['ftype','splitpath','cmp_paths','sort_paths','Path']
+__all__ = ['ftype','splitpath','joinpath','natural_cmp','cmp_pathsegs','Path']
 
 
 def ftype(path):
@@ -31,19 +31,50 @@ def joinpath(*args):
         return os.sep if args[0]=='' else args[0]
     raise "joinpath requires 1 or more arguments"
 
-
-
-def cmp_paths(p1,p2):
-    """p1 & p2 must be in split tuple form, -> returns [-1 if p1 < p2] [1 if p1 > p2] [0 if p1 == p2]"""
-    for d1,d2 in zip(p1[:-1],p2[:-1]):
-        if d1 == d2:
+def natural_cmp(a,b):
+    i,j,n,m = 0,0,len(a),len(b)
+    while i<n and j<m:
+        if not a[i].isnumeric() or not b[j].isnumeric():
+            if a[i] == b[j]:
+                i,j = i+1,j+1
+                continue
+            return -1 if a[i] < b[j] else 1
+        i2,j2 = i+1,j+1
+        while i2 < n and a[i2].isnumeric():
+            i2+=1
+        while j2 < m and b[j2].isnumeric():
+            j2+=1
+        na,nb = a[i:i2],b[j:j2]
+        if na == nb:
+            i,j = i2,j2
             continue
-        return -1 if d1 < d2 else 1
-    n1,n2 = len(p1),len(p2)
-    if n1 != n2:
-        return -1 if n1 < n2 else 1
-    f1,f2 = p1[-1],p2[-1]
-    return 1 if f1 > f2 else -1 if f1 < f2 else 0
+        if na[0]=='0' or nb[0]=='0':
+            return -1 if na < nb else 1
+        if int(na) == int(nb):
+            raise "Logical Error na:[%s] nb:[%s]"%(na,nb)
+        return -1 if int(na) < int(nb) else 1
+    if i < n:
+        return -1 if a[i] in " _-–,;!?¡" else 1
+    if j < m:
+        return 1 if b[j] in " _-–,;!?¡" else -1
+    assert a == b, "'%s' not equal to '%s'"%(a,b)
+    return 0
+
+
+def cmp_pathsegs(a,b):
+    """
+    args: a & b must be in split tuple form
+    returns:
+        -1: a < b
+         1: a > b
+         0: a == b
+    """
+    for i,j in zip(a,b):
+        if i == j:
+            continue
+        return natural_cmp(i,j)
+    n,m = len(a),len(b)
+    return 0 if n==m else -1 if n < m else 1
 
 
 
@@ -195,32 +226,31 @@ class Path(metaclass=PathMeta):
     #  --------- Comparisons --------- #
 
     def cmp(self,other):
+        """
+        -1: self < other
+         1: self > other
+         0: self == other
+        """
         if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
-        return cmp_paths(self._path,other._path)
+        n = cmp_pathsegs(self._dir,other._dir)
+        if n != 0: return n
+        if self.isdir:
+            return 0 if other.isdir else -1
+        if other.isdir:
+            return 1
+        return natural_cmp(self.name,other.name)
 
-    def __eq__(self,other):
-        if not isinstance(other,Path): return False
-        return cmp_paths(self._path,other._path) == 0
+    def __eq__(self,other): return self.cmp(other) == 0
 
-    def __ne__(self,other):
-        if not isinstance(other,Path): return True
-        return cmp_paths(self._path,other._path) != 0
+    def __ne__(self,other): return self.cmp(other) != 0
+    
+    def __lt__(self, other): return self.cmp(other) == -1
 
-    def __lt__(self, other):
-        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
-        return cmp_paths(self._path,other._path) == -1
+    def __le__(self, other): return self.cmp(other) <= 0
 
-    def __le__(self, other):
-        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
-        return cmp_paths(self._path,other._path) <= 0
+    def __gt__(self, other): return self.cmp(other) == 1
 
-    def __gt__(self, other):
-        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
-        return cmp_paths(self._path,other._path) == 1
-
-    def __ge__(self, other):
-        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
-        return cmp_paths(self._path,other._path) >= 0
+    def __ge__(self, other): return self.cmp(other) >= 0
 
 
 class Dir(Path):
@@ -297,7 +327,8 @@ class Dir(Path):
             * incprune: include prune
         """
         path,abspath = self.path,self.abspath
-        p = [Path(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath)]
+        with os.scandir(abspath) as scan:
+            p = [Path(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in scan]
         if not hidden: p = [x for x in p if not x.hidden]
         f = sorted([x for x in p if isinstance(x,File)],key=lambda x:x.name)
         dirs = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
@@ -307,6 +338,7 @@ class Dir(Path):
             depth = depth-1
         if excprune is None and incprune is None:
             return f+[a for b in [[d]+d.ls(depth,hidden) for d in dirs] for a in b]
+        # PRUNING
         for d,e,i in self._prune_dirs(dirs,excprune,incprune):
             f.extend([d]+d.ls(depth,hidden,excprune=e,incprune=i))
         return f
@@ -321,37 +353,23 @@ class Dir(Path):
             * incprune: include prune
         """
         path,abspath = self.path,self.abspath
-        if depth == 0:
-            f = [File(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath) if x.is_file()]
-            if not hidden: f = [x for x in f if not x.hidden]
-            return sorted(f,key=lambda x:x.name)
-
-        p = [Path(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath)]
+        with os.scandir(abspath) as scan:
+            if depth == 0:
+                f = [File(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in scan if x.is_file()]
+                if not hidden: f = [x for x in f if not x.hidden]
+                return sorted(f)
+            p = [Path(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in scan]
         if not hidden: p = [x for x in p if not x.hidden]
-        f = sorted([x for x in p if isinstance(x,File)],key=lambda x:x.name)
+        f = sorted([x for x in p if x.isfile])
         if depth is not None:
             depth = depth-1
-        dirs = sorted([x for x in p if isinstance(x,Dir)],key=lambda x:x.name)
+        dirs = sorted([x for x in p if x.isdir])
+
         if excprune is None and incprune is None:
             return f+[a for b in [x.ls_files(depth,hidden) for x in dirs] for a in b]
-        # ---- EFFICIENT PRUNING ---- #
-        if excprune is not None:
-            # get newest round of nodes & use them to filter out dirs that are to be completely excluded
-            excnodes = [e[0] for e in excprune if len(e) == 1]
-            dirs = [d for d in dirs if d.name not in excnodes]
-            # keep subtree arguments
-            exctrees = [e for e in excprune if len(e) > 1]
-            e_p = [x if len(x)>0 else None for x in [[e[1:] for e in exctrees if d.name==e[0]] for d in dirs]]
-        else:
-            e_p = [None]*len(dirs)
-        if incprune is None:
-            return f+[a for b in [d.ls_files(depth,hidden,excprune=e) for d,e in zip(dirs,e_p)] for a in b]
-        for d,e in zip(dirs,e_p):
-            i_p = [i for i in incprune if i[0] == d.name]
-            if len(i_p)==0:
-                continue
-            i_p = [i[1:] for i in i_p if len(i)>1]
-            f.extend(d.ls_files(depth,hidden,excprune=e,incprune=(i_p if len(i_p)>0 else None)))
+        # PRUNING
+        for d,e,i in self._prune_dirs(dirs,excprune,incprune):
+            f.extend(d.ls_files(depth,hidden,excprune=e,incprune=i))
         return f
 
     def ls_dirs(self,depth=None,hidden=False):
@@ -359,7 +377,9 @@ class Dir(Path):
         finds all dirs in path
         """
         path,abspath = self.path,self.abspath
-        p = sorted([Dir(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in os.scandir(abspath) if x.is_dir()],key=lambda x:x.name)
+        with os.scandir(abspath) as scan:
+            p = [Dir(x,os.path.join(path,x.name),os.path.join(abspath,x.name)) for x in scan if x.is_dir()]
+        p = mergesort(p,lambda x,y: natural_cmp(x.name,y.name))
         if not hidden: p = [x for x in p if not x.hidden]
         if depth is not None:
             if depth == 0: return p
