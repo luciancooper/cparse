@@ -1,24 +1,79 @@
 import os,re,fnmatch,functools
-from .util import iter_reduce
+from .util import iter_reduce,mergesort
+from .fpath import cmp_pathsegs
 
 __all__ = ['maketree','ls','ls_files','ls_dirs']
 
 # ============================================ Tree ============================================ #
 
-def maketree(paths,lvl=0,fmt="%n",cli=False):
-    """Recursively constructs tree from list of [File] objects"""
-    i,n = 0,len(paths)
-    while i < n and len(paths[i])-lvl == 1:
-        i=i+1
-    if i == n:
-        nodes = [x.fmt(fmt,cli) for x in paths]
-        return ["├── {}".format(x) for x in nodes[:-1]]+["└── {}".format(nodes[-1])]
-    ftree = ["├── {}".format(x.fmt(fmt,cli)) for x in paths[:i]]
-    groups = [i]+[x for x in range(i+1,n) if paths[x].path[lvl]!=paths[x-1].path[lvl]]
-    for i1,i2 in iter_reduce(groups):
-        ftree += ["├── {}".format(paths[i1].path[lvl])]+["│   {}".format(f) for f in maketree(paths[i1:i2],lvl+1,fmt,cli)]
-    i = groups[-1]
-    return ftree + ["└── {}".format(paths[i].path[lvl])]+["    {}".format(f) for f in maketree(paths[i:],lvl+1,fmt,cli)]
+def calc_structure(d,l=0):
+    #print('{1:}\n{0:}'.format('-'*53,'\n'.join('(%s)'%','.join([(' %s ' if i!=l else '[%s]')%s for i,s in enumerate(x)]) for x in d)))
+    n = len(d)
+    g = [0]+[i for i in range(1,n) if d[i][l]!=d[i-1][l]]
+    for i,j in iter_reduce(g):
+        yield (3,),d[i][:l+1]
+        if len(d[i])-l == 1:
+            i = i+1
+            if i==j:continue
+        for xi,xd in calc_structure(d[i:j],l+1):
+            yield (2,)+xi,xd
+        #print('-'*50)
+    i = g[-1]
+    yield (1,),d[i][:l+1]
+    if len(d[i])-l == 1:
+        i = i+1
+        if i==n:return
+    for xi,xd in calc_structure(d[i:],l+1):
+        yield (0,)+xi,xd
+
+def maketree(paths,fmt="%n",cli=False,sort=None):
+    """
+    Recursively constructs tree from list of [Path] objects
+    args:
+        * fmt
+        * cli
+        * sort
+    """
+    box = ['   ','└──','│  ','├──']
+    d = mergesort([x._dir for x in paths],cmp_pathsegs,unique=True)
+    if len(d[0]) == 0:
+        d = d[1:]
+    tinx,d = (list(x) for x in zip(*calc_structure(d)))
+    #treelog(tinx,d)
+    tinx,d,m = [(3,)]+tinx,[()]+d,[0]*(1+len(d))
+    p = [*filter(lambda x: x.isfile,paths)]
+    i,j,pn = 0,0,len(p)
+    # ----- Create map between d and p ----- #
+    # essentially do ...  while (i < pn)
+    if pn > 0:
+        while True:
+            while d[j] != p[i]._dir:
+                j=j+1
+            while i < pn and d[j]==p[i]._dir:
+                i,m[j] = i+1,m[j]+1
+            if i == pn:
+                break
+    # ----- Build Tree----- #
+    tree,i = [],m[0]
+    for x in range(i):
+        tree.append("├── {}".format(p[x].fmt(fmt,cli)))
+    for j in range(1,len(d)-1):
+        tree.append("{} {}".format(''.join(box[x] for x in tinx[j]),d[j][-1]))
+        if m[j] == 0:
+            continue
+        prefix = ''.join(box[x] for x in tinx[j][:-1])+box[tinx[j][-1]-1]
+        for x in range(i,i+m[j]-1):
+            tree.append('{}├── {}'.format(prefix,p[x].fmt(fmt,cli)))
+        i = i+m[j]
+        tree.append('{}{} {}'.format(prefix,box[3 if len(d[j+1])==len(d[j])+1 else 1],p[i-1].fmt(fmt,cli)))
+    tree.append("{} {}".format(''.join(box[x] for x in tinx[-1]),d[-1][-1]))
+    if m[-1] > 0:
+        prefix = ''.join(box[x] for x in tinx[-1][:-1])+box[tinx[-1][-1]-1]
+        pfiles = p[i:]
+        for f in pfiles[:-1]:
+            tree.append('{}├── {}'.format(prefix,f.fmt(fmt,cli)))
+        tree.append('{}└── {}'.format(prefix,pfiles[-1].fmt(fmt,cli)))
+    return tree
 
 
 # ============================================ ls ============================================ #

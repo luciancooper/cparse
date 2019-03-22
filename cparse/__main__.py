@@ -51,7 +51,7 @@ def _tree(args):
             sort = None
 
     # ---- Make Tree ---- #
-    ftree = maketree(sorted(files),fmt=args.format,cli=sys.stdout.isatty())
+    ftree = maketree(sorted(ls),fmt=args.format,cli=sys.stdout.isatty())
     print('\n'.join(['.']+ftree),file=sys.stdout)
 
 
@@ -167,12 +167,15 @@ def main():
     subparsers = parser.add_subparsers(title="Available sub commands",metavar='command')
 
     # ------------------------------------------------ tree ------------------------------------------------ #
-    # path , (dirflag | fileflag) , hidden , maxdepth , format , [exclude, include] , [pattern , regexp , filetype] , (-m | -M | -c | -C | -b | -B)
+    # argparse variables:
+    #   path , (dirflag | fileflag) , hidden , maxdepth , format , [exclude, include] , [pattern , regexp , filetype] , sort
+    # command options:
+    #   [-h] [-d | -f] [-a] [-n DEPTH] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B] [path]
     parser_tree = subparsers.add_parser('tree', help='print file tree',description="File tree command")
     parser_tree.add_argument('path',nargs='?',default='.',help='tree root directory')
     parser_tree_flags = parser_tree.add_mutually_exclusive_group(required=False)
-    parser_tree_flags.add_argument('-d',dest='dirflag',type='store_true',help='dirs only flag')
-    parser_tree_flags.add_argument('-F',dest='fileflag',type='store_true',help='files only flag (ignore empty directories)')
+    parser_tree_flags.add_argument('-d',dest='dirflag',action='store_true',help='dirs only flag')
+    parser_tree_flags.add_argument('-f',dest='fileflag',action='store_true',help='files only flag (ignore empty directories)')
     parser_tree.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
     parser_tree.add_argument('-n',dest='maxdepth',type=int,metavar='DEPTH',help='max tree depth')
     parser_tree.add_argument('-fmt',dest='format',type=str,default="%n",metavar='FORMAT',help='display format for tree nodes')
@@ -194,14 +197,17 @@ def main():
     parser_tree.set_defaults(run=_tree)
 
     # ------------------------------------------------ ls ------------------------------------------------ #
-    # path , (dirflag | fileflag) , hidden , recursive, maxdepth , limit , format , [exclude, include] , [pattern , regexp , filetype] , (-m | -M | -c | -C | -b | -B)
+    # variables:
+    #   path , (dirflag | fileflag) , hidden , recursive, maxdepth , limit , format , [exclude, include] , [pattern , regexp , filetype] , sort
+    # command:
+    #   [-h] [-r] [-n DEPTH] [-d | -f] [-a] [-lim COUNT] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B] [path]
     parser_ls = subparsers.add_parser('ls', help='list files in directory',description="List files command")
     parser_ls.add_argument('path',nargs='?',default='.',help='root directory')
     parser_ls.add_argument('-r',dest='recursive',action='store_true',help='list files recursively')
     parser_ls.add_argument('-n',dest='maxdepth',type=int,metavar='DEPTH',help='max depth if recursive flag is specified')
     parser_ls_flags = parser_ls.add_mutually_exclusive_group(required=False)
-    parser_ls_flags.add_argument('-d',dest='dirflag',type='store_true',help='dirs only flag')
-    parser_ls_flags.add_argument('-F',dest='fileflag',type='store_true',help='files only flag')
+    parser_ls_flags.add_argument('-d',dest='dirflag',action='store_true',help='dirs only flag')
+    parser_ls_flags.add_argument('-f',dest='fileflag',action='store_true',help='files only flag')
     parser_ls.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
     parser_ls.add_argument('-lim',dest='limit',type=int,metavar='COUNT',help='maximum items to list in output')
     parser_ls.add_argument('-fmt',dest='format',type=str,default="%f",metavar='FORMAT',help='display format for listed items')
@@ -251,5 +257,4 @@ def main():
 
     # ------------------------------------------------------------------------------------------------ #
     args = parser.parse_args()
-    #cli_warning("about to run cparse {}".format(args))
     args.run(args)

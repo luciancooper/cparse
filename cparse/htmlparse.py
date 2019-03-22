@@ -2,7 +2,7 @@
 import sys,re,os
 import pydecorator
 from .util import read_file,getkey,is_url,split_url,cli_warning
-from .fpath import File
+from .fpath import Path
 from .tree import maketree
 from html.parser import HTMLParser
 
@@ -86,7 +86,7 @@ class linktree():
         if len(files)==0:
             return files
         root = os.path.join(os.path.commonpath(files),"")
-        files = sorted([File(f[len(root):],f) for f in files])
+        files = sorted([Path(f[len(root):],f) for f in files])
         return '\n'.join(['.']+maketree(files,fmt='%n',cli=cli))
 
 
