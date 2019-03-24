@@ -126,6 +126,16 @@ def str_col(items,align='>'):
     a = '{:%s%i}'%(align,mx)
     return [a.format(x) for x in s]
 
+def str_table(data,header=None):
+    if header is not None:
+        data = [[h]+c for h,c in zip(header,data)]
+    cols = [[str(x) for x in c] for c in data]
+    spans = [max(len(x) for x in c) for c in cols]
+    cols = [[x.rjust(w,' ') for x in c] for w,c in zip(spans,cols)]
+    divider = '+-%s-+'%'-+-'.join(x*'-' for x in spans)
+    rows = ['| %s |'%' | '.join(x) for x in zip(*cols)]
+    return '\n'.join([divider]+[a for b in [[r]+[divider] for r in rows] for a in b])
+
 # ============================================ cli ============================================ #
 
 # :---------:------:------:------------:----------:
@@ -140,6 +150,27 @@ def str_col(items,align='>'):
 # | Cyan    |  36  |  46  |    36;1    |   46;1   |
 # | White   |  37  |  47  |    37;1    |   47;1   |
 # :---------:------:------:------------:----------:
+
+# cli color to apply to specified code files
+
+ftype_cli = {
+    'js':'38;5;11',
+    'html':'38;5;208',
+    'css':'38;5;26',
+    'py':'38;5;226',
+    'rb':'38;5;160',
+    'json':'38;5;28',
+    'xml':'38;5;28',
+    'php':'38;5;21',
+    'r':'38;5;21',
+    'ipynb':'38;5;172',
+    'c':'38;5;32',
+    'cc':'38;5;32',
+    'cpp':'38;5;32',
+    'cs':'38;5;32',
+    'cxx':'38;5;32',
+    'java':'38;5;215'
+}
 
 def cli_color(text,*colors):
     return "{}{}\x1b[0m".format("".join("\x1b[{}m".format(c) for c in colors),text)

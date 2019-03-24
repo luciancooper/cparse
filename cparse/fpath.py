@@ -2,7 +2,7 @@
 
 import os,re,fnmatch
 import pydecorator
-from .util import mergesort,timestamp,cli_color
+from .util import mergesort,timestamp,ftype_cli,cli_color
 
 __all__ = ['ftype','splitpath','joinpath','natural_cmp','cmp_pathsegs','Path']
 
@@ -114,18 +114,14 @@ class Path(metaclass=PathMeta):
                 path,abspath = (entry.path,args[0]) if os.path.isabs(args[0]) else _settle_args(args[0])
             else:
                 path,abspath = _settle_args(*args)
-            if entry.is_dir():
-                return object.__new__(Dir),(path,abspath),{}
             stats = entry.stat()
-            return object.__new__(File),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size}
+            return object.__new__(Dir if entry.is_dir() else File),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size,'ino':stats.st_ino}
         path,abspath = _settle_args(*args)
         if not os.path.exists(abspath):
             return object.__new__(cls),(path,abspath),{}
-        if os.path.isdir(abspath):
-            return object.__new__(Dir),(path,abspath),{}
         # Get Created/Modified times
         stats = os.stat(abspath)
-        return object.__new__(File),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size}
+        return object.__new__(Dir if os.path.isdir(abspath) else File),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size,'ino':stats.st_ino}
         
 
     def __init__(self,path,abspath,**kwargs):
@@ -163,6 +159,9 @@ class Path(metaclass=PathMeta):
     def path(self): return joinpath(*self._path)
 
     @property
+    def dirpath(self):return joinpath(*self._dir)
+
+    @property
     def abspath(self): return joinpath(*self._abspath)
 
     @property
@@ -171,6 +170,32 @@ class Path(metaclass=PathMeta):
             return "/"
         return joinpath(*self._abspath[:-len(self._path)],'')
 
+    # --------- file properties --------- #
+
+    @property
+    def filetype(self):
+        """returns file extension"""
+        if self.isdir:
+            return None
+        try:
+            file = self._path[-1]
+            i = file.rindex('.')
+            return file[i+1:]
+        except ValueError:
+            return ''
+
+    @property
+    def filename(self):
+        """returns file name without extension"""
+        if self.isdir:
+            return None
+        try:
+            file = self._path[-1]
+            i = file.rindex('.')
+            return file[:i]
+        except ValueError:
+            return self._path[-1]
+    
     # --------- path properties --------- #
 
     @property
@@ -181,10 +206,25 @@ class Path(metaclass=PathMeta):
 
     def _format_code(self,code,cli):
         # Date Modified
-        if code == 'n': return self.name
+        if code == 'n':
+            if not cli or not self.isfile: return self.name
+            ft = self.filetype
+            return cli_color(self.name,ftype_cli[ft]) if ft in ftype_cli else self.name
         if code == 'f': return self.path
         if code == 'F': return self.abspath
-        if code == 'm' or code == 'c' or code == 'b': return ''
+        if code == 'd': return self.dirpath
+        # inode number
+        if code == 'i':
+            return '-' if not hasattr(self,'ino') else cli_color(self.ino,'38;5;165') if cli else str(self.ino)
+        # Date Modified
+        if code == 'm':
+            return '-' if not hasattr(self,'modified') else cli_color(timestamp(self.modified),33) if cli else timestamp(self.modified)
+        # Date created
+        if code == 'c':
+            return '-' if not hasattr(self,'created') else cli_color(timestamp(self.created),32) if cli else timestamp(self.created)
+        # File Size
+        if code == 'b':
+            return '-' if not hasattr(self,'size') else cli_color(str(self.size),34) if cli else str(self.size)
         raise IndexError("Unrecognized Format Variable '{}'".format(code))
 
     @pydecorator.str
@@ -252,6 +292,35 @@ class Path(metaclass=PathMeta):
 
     def __ge__(self, other): return self.cmp(other) >= 0
 
+    #  --------- Comparisons --------- #
+
+    def cmp_ftype(self,other):
+        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
+        if self.isdir:
+            return cmp_pathsegs(self._dir,other._dir) if other.isdir else -1
+        if other.isdir: 
+            return 1
+        ft1,ft2 = self.filetype,other.filetype
+        if ft1 != ft2:
+            return -1 if ft1 < ft2 else 1
+        n = cmp_pathsegs(self._dir,other._dir)
+        return n if n != 0 else natural_cmp(self.name,other.name)
+
+    def cmp_mtime(self,other):
+        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
+        return self.cmp(other) if self.modified == other.modified else 1 if self.modified < other.modified else -1
+
+    def cmp_ctime(self,other):
+        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
+        return self.cmp(other) if self.created == other.created else 1 if self.created < other.created else -1
+
+    def cmp_size(self,other):
+        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
+        return self.cmp(other) if self.size == other.size else 1 if self.size < other.size else -1
+
+    def cmp_ino(self,other):
+        if not isinstance(other,Path): raise ValueError("Cannot compare to object of type {}".format(type(other).__name__))
+        return self.cmp(other) if self.ino == other.ino else -1 if self.ino < other.ino else 1
 
 class Dir(Path):
 
@@ -269,12 +338,11 @@ class Dir(Path):
                 path,abspath = (entry.path,args[0]) if os.path.isabs(args[0]) else _settle_args(args[0])
             else:
                 path,abspath = _settle_args(*args)
-            return object.__new__(cls),(path,abspath),{}
-        return object.__new__(cls),_settle_args(*args),{}
-        
-        #if type(path) == os.DirEntry:
-        #    path = path.path
-        #return object.__new__(cls),(path,abspath),{}
+            stats = entry.stat()
+        else:
+            path,abspath = _settle_args(*args)
+            stats = os.stat(abspath)
+        return object.__new__(cls),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size,'ino':stats.st_ino}
 
     
     def __init__(self,*args,**kwargs):
@@ -411,7 +479,7 @@ class File(Path):
         else:
             path,abspath = _settle_args(*args)
             stats = os.stat(abspath)
-        return object.__new__(cls),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size}
+        return object.__new__(cls),(path,abspath),{'created':stats.st_birthtime,'modified':stats.st_mtime,'size':stats.st_size,'ino':stats.st_ino}
         
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
@@ -428,36 +496,19 @@ class File(Path):
     def _dir(self):
         return self._path[:-1]
     
-    # --------- file properties --------- #
-
-    @property
-    def filetype(self):
-        """returns file extension"""
-        if self.dir:
-            return None
-        try:
-            file = self._path[-1]
-            i = file.rindex('.')
-            return file[i+1:]
-        except ValueError:
-            return ''
-
     # --------- Checks --------- #
 
     def is_ftype(self,ftypes):
         """Check if filetype is one of supplied [ftypes]"""
         return self.filetype in ftypes
 
-    # --------- Format --------- #
+    # --------- I/O --------- #
 
-    def _format_code(self,code,cli):
-        # Date Modified
-        if code == 'm':
-            return '-' if not hasattr(self,'modified') else cli_color(timestamp(self.modified),33) if cli else timestamp(self.modified)
-        # Date created
-        if code == 'c':
-            return '-' if not hasattr(self,'created') else cli_color(timestamp(self.created),32) if cli else timestamp(self.created)
-        # File Size
-        if code == 'b':
-            return '-' if not hasattr(self,'size') else cli_color(str(self.size),34) if cli else str(self.size)
-        return super()._format_code(code,cli)
+    def read(self):
+        with open(self.abspath,'r') as f:
+            return f.read()
+
+    def readlines(self):
+        with open(self.abspath,'r') as f:
+            for f in f.readlines():
+                yield f

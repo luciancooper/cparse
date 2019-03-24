@@ -1,5 +1,5 @@
 import sys,os,argparse
-from .util import cli_warning,cli_color,reduce
+from .util import cli_warning,cli_color,reduce,mergesort
 
 def path_arg(path):
     path = os.path.normcase(path)
@@ -41,17 +41,8 @@ def _tree(args):
             ls = [*filter(lambda x: x.is_regexp(args.regexp),ls)]
         if args.filetype is not None:
             ls = [*filter(lambda x: x.isdir or x.is_ftype(args.filetype),ls)]
-        
-        # (sort)
-        if args.sort is not None:
-            klmb = (lambda x: x.modified) if args.sort.lower()=='m' else (lambda x: x.created) if args.sort.lower() == 'c' else (lambda x: x.size)
-            rev = args.sort.islower()
-            sort = lambda x: sorted(x,key=klmb,reverse=rev)
-        else:
-            sort = None
-
     # ---- Make Tree ---- #
-    ftree = maketree(sorted(ls),fmt=args.format,cli=sys.stdout.isatty())
+    ftree = maketree(sorted(ls),fmt=args.format,cli=sys.stdout.isatty(),sort=args.sort)
     print('\n'.join(['.']+ftree),file=sys.stdout)
 
 
@@ -77,8 +68,18 @@ def _ls(args):
             ls = root.ls_files(depth,args.hidden,excprune=exc,incprune=inc)
             # (sort)
             if args.sort is not None:
-                klmb = (lambda x: x.modified) if args.sort.lower()=='m' else (lambda x: x.created) if args.sort.lower() == 'c' else (lambda x: x.size)
-                ls = sorted(ls,key=klmb,reverse = args.sort.islower())
+                if args.sort.lower()=='m':
+                    ls = mergesort(ls,lambda x,y: x.cmp_mtime(y))
+                elif args.sort.lower()=='c':
+                    ls = mergesort(ls,lambda x,y: x.cmp_ctime(y))
+                elif args.sort.lower()=='b':
+                    ls = mergesort(ls,lambda x,y: x.cmp_size(y))
+                elif args.sort.lower()=='i':
+                    ls = mergesort(ls,lambda x,y: x.cmp_ino(y))
+                else:
+                    ls = mergesort(ls,lambda x,y: x.cmp_ftype(y))
+                if args.sort.isupper():
+                    ls = [*reversed(ls)]
         else:
             ls = root.ls(depth,args.hidden,excprune=exc,incprune=inc)
         
@@ -96,6 +97,20 @@ def _ls(args):
     isatty = sys.stdout.isatty()
     for x in ls[:limit]:
         print(x.fmt(args.format,cli=isatty),file=sys.stdout)
+
+# ============================================ stat ============================================ #
+
+def _stat(args):
+    # path , hidden
+    path = path_arg(args.path)
+    print(cli_color(path,36),file=sys.stderr)
+    from .fpath import Path
+    from .tree import filetype_stat
+    root = Path('.',path)
+    ls = root.ls_files(hidden=args.hidden)
+    # ---- Make Table ---- #
+    table = filetype_stat(ls,cli=sys.stdout.isatty())
+    print(table,file=sys.stdout)
 
 # ============================================ Py ============================================ #
 
@@ -170,7 +185,7 @@ def main():
     # argparse variables:
     #   path , (dirflag | fileflag) , hidden , maxdepth , format , [exclude, include] , [pattern , regexp , filetype] , sort
     # command options:
-    #   [-h] [-d | -f] [-a] [-n DEPTH] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B] [path]
+    #   [-d | -f] [-a] [-n DEPTH] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B | -i | -I | -g | -G] [path]
     parser_tree = subparsers.add_parser('tree', help='print file tree',description="File tree command")
     parser_tree.add_argument('path',nargs='?',default='.',help='tree root directory')
     parser_tree_flags = parser_tree.add_mutually_exclusive_group(required=False)
@@ -193,14 +208,17 @@ def main():
     parser_tree_sort.add_argument('-C',dest='sort',action='store_const',const='C',help='sort by created time ascending')
     parser_tree_sort.add_argument('-b',dest='sort',action='store_const',const='b',help='sort by size descending')
     parser_tree_sort.add_argument('-B',dest='sort',action='store_const',const='B',help='sort by size ascending')
-    #parser_tree.add_argument('-sort',dest='sort',type=str,metavar='ARG',choices=['m','M','c','C','s','S'],help='sort files by created timestamp, modified timestamp, or size')
+    parser_tree_sort.add_argument('-i',dest='sort',action='store_const',const='i',help='sort by inode descending')
+    parser_tree_sort.add_argument('-I',dest='sort',action='store_const',const='I',help='sort by inode ascending')
+    parser_tree_sort.add_argument('-g',dest='sort',action='store_const',const='g',help='group files by filetype descending')
+    parser_tree_sort.add_argument('-G',dest='sort',action='store_const',const='G',help='group files by filetype ascending')
     parser_tree.set_defaults(run=_tree)
 
     # ------------------------------------------------ ls ------------------------------------------------ #
     # variables:
     #   path , (dirflag | fileflag) , hidden , recursive, maxdepth , limit , format , [exclude, include] , [pattern , regexp , filetype] , sort
     # command:
-    #   [-h] [-r] [-n DEPTH] [-d | -f] [-a] [-lim COUNT] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B] [path]
+    #   [-r] [-n DEPTH] [-d | -f] [-a] [-lim COUNT] [-fmt FORMAT] [-exc PATH] [-inc PATH] [-wc PATTERN] [-grep REGEXP] [-ft FILETYPE] [-m | -M | -c | -C | -b | -B | -i | -I | -g | -G] [path]
     parser_ls = subparsers.add_parser('ls', help='list files in directory',description="List files command")
     parser_ls.add_argument('path',nargs='?',default='.',help='root directory')
     parser_ls.add_argument('-r',dest='recursive',action='store_true',help='list files recursively')
@@ -219,14 +237,27 @@ def main():
     parser_ls_filter.add_argument('-grep',dest='regexp',metavar='REGEXP',help='regular expression to match')
     parser_ls_filter.add_argument('-ft',dest='filetype',action='append',metavar='FILETYPE',help='file type filter')
     parser_ls_sort = parser_ls.add_mutually_exclusive_group(required=False)
-    parser_ls_sort.add_argument('-m',dest='sort',action='store_const',const='m',help='sort by modified time descending')
-    parser_ls_sort.add_argument('-M',dest='sort',action='store_const',const='M',help='sort by modified time ascending')
-    parser_ls_sort.add_argument('-c',dest='sort',action='store_const',const='c',help='sort by created time descending')
-    parser_ls_sort.add_argument('-C',dest='sort',action='store_const',const='C',help='sort by created time ascending')
-    parser_ls_sort.add_argument('-b',dest='sort',action='store_const',const='b',help='sort by size descending')
-    parser_ls_sort.add_argument('-B',dest='sort',action='store_const',const='B',help='sort by size ascending')
-    #parser_ls.add_argument('-sort',dest='sort',type=str,metavar='ARG',choices=['m','M','c','C','s','S'],help='sort files by created timestamp, modified timestamp, or size')
+    parser_ls_sort.add_argument('-m',dest='sort',action='store_const',const='m',help='sort by modified time (most recent first)')
+    parser_ls_sort.add_argument('-M',dest='sort',action='store_const',const='M',help='sort by modified time (leat recent first)')
+    parser_ls_sort.add_argument('-c',dest='sort',action='store_const',const='c',help='sort by created time (newest first)')
+    parser_ls_sort.add_argument('-C',dest='sort',action='store_const',const='C',help='sort by created time (oldest first)')
+    parser_ls_sort.add_argument('-b',dest='sort',action='store_const',const='b',help='sort by size (largest first)')
+    parser_ls_sort.add_argument('-B',dest='sort',action='store_const',const='B',help='sort by size (smallest first)')
+    parser_ls_sort.add_argument('-i',dest='sort',action='store_const',const='i',help='sort by inode (descending)')
+    parser_ls_sort.add_argument('-I',dest='sort',action='store_const',const='I',help='sort by inode (ascending)')
+    parser_ls_sort.add_argument('-g',dest='sort',action='store_const',const='g',help='group files by file extension (descending)')
+    parser_ls_sort.add_argument('-G',dest='sort',action='store_const',const='G',help='group files by file extension (ascending)')
     parser_ls.set_defaults(run=_ls)
+
+     # ------------------------------------------------ stat ------------------------------------------------ #
+    # variables:
+    #   path , hidden
+    # command:
+    #   [-a] [path]
+    parser_stat = subparsers.add_parser('stat', help='directory filetype stats',description="Directory stats command")
+    parser_stat.add_argument('path',nargs='?',default='.',help='root directory')
+    parser_stat.add_argument('-a',dest='hidden',action='store_true',help='include hidden files')
+    parser_stat.set_defaults(run=_stat)
 
     # ------------------------------------------------ py ------------------------------------------------ #
 
