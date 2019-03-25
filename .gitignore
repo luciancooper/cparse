@@ -1,18 +1,22 @@
 
-# MacOS DS store hidden files
+# OS Generated Files
 .DS_Store
-._.DS_Store
-**/.DS_Store
-**/._.DS_Store
+._*
 
+# VisualStudio Code workspace files
+.vscode
+
+# IntelliJ IDEA workspace fiels
+.idea
+
+# Eclipse workspace files
+.project
+.settings
 
 files.txt
 
 # Hide All Jupyter Notebooks that begin with 'Scratch'
 Scratch*.ipynb
-
-# Hide visual studio code hidden files
-.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

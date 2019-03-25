@@ -5,6 +5,7 @@ from contextlib import closing
 import re
 import sys
 import os
+import inspect
 
 
 def getkey(d,key,default=None):
@@ -50,6 +51,41 @@ def reduce(fn,iterable,init=None):
         value = fn(value,e)
     return value
 
+# ============================================ Sort ============================================ #
+
+def mergesort(vector,cmp,unique=False):
+
+    def merger(a,b):
+        i,j,x,y = 0,0,len(a),len(b)
+        while i<x and j<y:
+            z = cmp(a[i],b[j])
+            if z<0:
+                yield a[i]
+                i=i+1
+            elif z>0:
+                yield b[j]
+                j=j+1
+            else:
+                yield a[i]
+                if not unique:
+                    yield b[j]
+                i,j=i+1,j+1
+        while i<x:
+            yield a[i]
+            i=i+1
+        while j<y:
+            yield b[j]
+            j=j+1
+
+    def sorter(a):
+        if len(a)<=1:return a
+        m = len(a)//2
+        return [*merger(sorter(a[:m]),sorter(a[m:]))]
+    
+    if inspect.isgenerator(vector):
+        vector = list(vector)
+    return sorter(vector)
+
 # ============================================ time ============================================ #
 
 def timestamp(ts):
@@ -90,6 +126,16 @@ def str_col(items,align='>'):
     a = '{:%s%i}'%(align,mx)
     return [a.format(x) for x in s]
 
+def str_table(data,header=None):
+    if header is not None:
+        data = [[h]+c for h,c in zip(header,data)]
+    cols = [[str(x) for x in c] for c in data]
+    spans = [max(len(x) for x in c) for c in cols]
+    cols = [[x.rjust(w,' ') for x in c] for w,c in zip(spans,cols)]
+    divider = '+-%s-+'%'-+-'.join(x*'-' for x in spans)
+    rows = ['| %s |'%' | '.join(x) for x in zip(*cols)]
+    return '\n'.join([divider]+[a for b in [[r]+[divider] for r in rows] for a in b])
+
 # ============================================ cli ============================================ #
 
 # :---------:------:------:------------:----------:
@@ -104,6 +150,27 @@ def str_col(items,align='>'):
 # | Cyan    |  36  |  46  |    36;1    |   46;1   |
 # | White   |  37  |  47  |    37;1    |   47;1   |
 # :---------:------:------:------------:----------:
+
+# cli color to apply to specified code files
+
+ftype_cli = {
+    'js':'38;5;11',
+    'html':'38;5;208',
+    'css':'38;5;26',
+    'py':'38;5;226',
+    'rb':'38;5;160',
+    'json':'38;5;28',
+    'xml':'38;5;28',
+    'php':'38;5;21',
+    'r':'38;5;21',
+    'ipynb':'38;5;172',
+    'c':'38;5;32',
+    'cc':'38;5;32',
+    'cpp':'38;5;32',
+    'cs':'38;5;32',
+    'cxx':'38;5;32',
+    'java':'38;5;215'
+}
 
 def cli_color(text,*colors):
     return "{}{}\x1b[0m".format("".join("\x1b[{}m".format(c) for c in colors),text)

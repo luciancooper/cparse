@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name='cparse',
-    version='0.0.1',
+    version='0.0.2',
     author='Lucian Cooper',
     author_email='cooperlucian@gmail.com',
     url='https://github.com/luciancooper/cparse',

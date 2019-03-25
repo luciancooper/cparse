@@ -3,7 +3,7 @@ cparse
 =================
 
 +---------------------------------------------------------+
-| Current version: 0.0.1                                  |
+| Current version: 0.0.2                                  |
 +---------------------------------------------------------+
 | `Github <https://github.com/luciancooper/cparse>`_      |
 +---------------------------------------------------------+
@@ -18,9 +18,9 @@ Use ``pip`` via PyPi::
 
     pip install cparse
 
-**Or** use ``git``::
+**Or** clone the repository::
 
-    git clone git://github.com/luciancooper/cparse.git cparse
+    git clone git://github.com/luciancooper/cparse.git
     cd cparse
     python setup.py install
 
@@ -28,19 +28,21 @@ Use ``pip`` via PyPi::
 Usage
 ------------------------
 
-cparse is meant to be used at the command line. There are currently 5 subcommands:
+cparse is a command line tool. There are currently 6 subcommands:
 
-+----------+-------------------------+
-| ``ls``   | list files in directory |
-+----------+-------------------------+
-| ``tree`` | print file tree         |
-+----------+-------------------------+
-| ``py``   | python code parsing     |
-+----------+-------------------------+
-| ``html`` | html link parsing       |
-+----------+-------------------------+
-| ``css``  | css code parsing        |
-+----------+-------------------------+
++----------+--------------------------+
+| ``ls``   | list files in directory  |
++----------+--------------------------+
+| ``tree`` | print file tree          |
++----------+--------------------------+
+| ``stat`` | directory filetype stats |
++----------+--------------------------+
+| ``py``   | python code parsing      |
++----------+--------------------------+
+| ``html`` | html link parsing        |
++----------+--------------------------+
+| ``css``  | css code parsing         |
++----------+--------------------------+
 
 
 .. toctree::
@@ -49,6 +51,7 @@ cparse is meant to be used at the command line. There are currently 5 subcommand
 
    ls
    tree
+   stat
    py
    html
    css
